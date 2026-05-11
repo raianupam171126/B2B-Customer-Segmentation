@@ -1,0 +1,215 @@
+"""
+Segmentation Module
+===================
+Implements multiple clustering techniques for B2B customer segmentation:
+
+1. RFM Analysis — classic Recency/Frequency/Monetary scoring
+2. K-Means — centroid-based partitioning with optimal K selection
+3. Hierarchical — agglomerative clustering with Ward linkage
+4. DBSCAN — density-based anomaly/outlier detection
+5. GMM — Gaussian Mixture Model for soft (probabilistic) clustering
+"""
+
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    silhouette_score,
+    calinski_harabasz_score,
+    davies_bouldin_score,
+)
+from kneed import KneeLocator
+
+
+# ──────────────────────────────────────────────
+# RFM Segmentation
+# ──────────────────────────────────────────────
+
+def rfm_segmentation(
+    df: pd.DataFrame,
+    recency_col: str = "days_since_last_activity",
+    frequency_col: str = "total_activities",
+    monetary_col: str = "total_pipeline_value",
+    n_bins: int = 5,
+) -> pd.DataFrame:
+    """
+    Perform RFM segmentation on account data.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Unified feature matrix.
+    recency_col, frequency_col, monetary_col : str
+        Column names for R, F, M dimensions.
+    n_bins : int
+        Number of quantile bins (default 5).
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with R_Score, F_Score, M_Score, RFM_Score, and RFM_Segment.
+    """
+    rfm = df[["sf_account_id", recency_col, frequency_col, monetary_col]].copy()
+
+    # Recency: lower is better → invert scoring
+    rfm["R_Score"] = pd.qcut(rfm[recency_col], n_bins, labels=range(n_bins, 0, -1))
+    rfm["F_Score"] = pd.qcut(
+        rfm[frequency_col].rank(method="first"), n_bins, labels=range(1, n_bins + 1)
+    )
+    rfm["M_Score"] = pd.qcut(
+        rfm[monetary_col].rank(method="first"), n_bins, labels=range(1, n_bins + 1)
+    )
+
+    for col in ["R_Score", "F_Score", "M_Score"]:
+        rfm[col] = rfm[col].astype(int)
+
+    rfm["RFM_Score"] = rfm["R_Score"] + rfm["F_Score"] + rfm["M_Score"]
+
+    # Map to business segments
+    def assign_segment(row):
+        r, f, m = row["R_Score"], row["F_Score"], row["M_Score"]
+        if r >= 4 and f >= 4 and m >= 4:
+            return "Champions"
+        elif r >= 3 and f >= 3:
+            return "Loyal Accounts"
+        elif r >= 4 and f <= 2:
+            return "New / Promising"
+        elif r <= 2 and f >= 3:
+            return "At Risk"
+        elif r <= 2 and f <= 2 and m <= 2:
+            return "Hibernating"
+        else:
+            return "Needs Attention"
+
+    rfm["RFM_Segment"] = rfm.apply(assign_segment, axis=1)
+    return rfm
+
+
+# ──────────────────────────────────────────────
+# K-Means with Optimal K Selection
+# ──────────────────────────────────────────────
+
+def find_optimal_k(
+    X_scaled: np.ndarray,
+    k_range: range = range(2, 12),
+    random_state: int = 42,
+) -> dict:
+    """
+    Evaluate K-Means across a range of K values using multiple metrics.
+
+    Returns
+    -------
+    dict
+        Keys: 'inertias', 'silhouettes', 'calinski', 'davies',
+              'optimal_k_elbow', 'optimal_k_silhouette'
+    """
+    inertias, silhouettes, calinski_scores, davies_scores = [], [], [], []
+
+    for k in k_range:
+        km = KMeans(n_clusters=k, n_init=15, random_state=random_state)
+        labels = km.fit_predict(X_scaled)
+        inertias.append(km.inertia_)
+        silhouettes.append(silhouette_score(X_scaled, labels))
+        calinski_scores.append(calinski_harabasz_score(X_scaled, labels))
+        davies_scores.append(davies_bouldin_score(X_scaled, labels))
+
+    # Elbow detection
+    kl = KneeLocator(list(k_range), inertias, curve="convex", direction="decreasing")
+    optimal_k_elbow = kl.knee if kl.knee else 4
+
+    # Best silhouette
+    optimal_k_sil = list(k_range)[np.argmax(silhouettes)]
+
+    return {
+        "k_range": list(k_range),
+        "inertias": inertias,
+        "silhouettes": silhouettes,
+        "calinski": calinski_scores,
+        "davies": davies_scores,
+        "optimal_k_elbow": optimal_k_elbow,
+        "optimal_k_silhouette": optimal_k_sil,
+    }
+
+
+def fit_kmeans(
+    X_scaled: np.ndarray, n_clusters: int, random_state: int = 42
+) -> tuple:
+    """Fit K-Means and return (model, labels)."""
+    km = KMeans(n_clusters=n_clusters, n_init=15, random_state=random_state)
+    labels = km.fit_predict(X_scaled)
+    return km, labels
+
+
+# ──────────────────────────────────────────────
+# Hierarchical Clustering
+# ──────────────────────────────────────────────
+
+def fit_hierarchical(
+    X_scaled: np.ndarray, n_clusters: int
+) -> np.ndarray:
+    """Fit Agglomerative Clustering with Ward linkage."""
+    hc = AgglomerativeClustering(n_clusters=n_clusters, linkage="ward")
+    return hc.fit_predict(X_scaled)
+
+
+# ──────────────────────────────────────────────
+# DBSCAN
+# ──────────────────────────────────────────────
+
+def fit_dbscan(
+    X_scaled: np.ndarray, eps: float = 1.5, min_samples: int = 10
+) -> np.ndarray:
+    """
+    Fit DBSCAN for density-based clustering / anomaly detection.
+    Labels of -1 indicate outliers.
+    """
+    db = DBSCAN(eps=eps, min_samples=min_samples)
+    return db.fit_predict(X_scaled)
+
+
+# ──────────────────────────────────────────────
+# Gaussian Mixture Model
+# ──────────────────────────────────────────────
+
+def fit_gmm(
+    X_scaled: np.ndarray,
+    n_components: int,
+    random_state: int = 42,
+) -> tuple:
+    """
+    Fit GMM and return (model, labels, probabilities).
+    """
+    gmm = GaussianMixture(
+        n_components=n_components,
+        covariance_type="full",
+        random_state=random_state,
+    )
+    labels = gmm.fit_predict(X_scaled)
+    probs = gmm.predict_proba(X_scaled)
+    return gmm, labels, probs
+
+
+def select_gmm_components(
+    X_scaled: np.ndarray,
+    k_range: range = range(2, 12),
+    random_state: int = 42,
+) -> dict:
+    """Evaluate GMM across K values using BIC and AIC."""
+    bic_scores, aic_scores = [], []
+    for k in k_range:
+        gmm = GaussianMixture(
+            n_components=k, covariance_type="full", random_state=random_state
+        )
+        gmm.fit(X_scaled)
+        bic_scores.append(gmm.bic(X_scaled))
+        aic_scores.append(gmm.aic(X_scaled))
+
+    return {
+        "k_range": list(k_range),
+        "bic": bic_scores,
+        "aic": aic_scores,
+        "optimal_k_bic": list(k_range)[np.argmin(bic_scores)],
+        "optimal_k_aic": list(k_range)[np.argmin(aic_scores)],
+    }
