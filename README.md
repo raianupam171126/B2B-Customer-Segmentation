@@ -3,11 +3,17 @@ B2B customer segmentation framework — RFM, K-Means, Hierarchical, DBSCAN &amp;
 
 Business Problem
 Company: TechNova Solutions — a mid-market B2B SaaS company selling an enterprise analytics platform.
+
 Challenge: Marketing and sales teams operate in silos. Marketo captures engagement data (email opens, webinar attendance, content downloads) while Salesforce holds pipeline and revenue data (opportunities, deal size, win rates). Without unifying these, the company can't answer critical questions:
+
 Which accounts are high-value but under-engaged (churn risk)?
+
 Which accounts show strong engagement but low pipeline (conversion opportunity)?
+
 How should marketing prioritize ABM spend across account tiers?
+
 What does a healthy account actually look like across both systems?
+
 This project builds a unified segmentation framework that merges both data sources and applies multiple clustering techniques to identify actionable account segments.
 ---
 Pipeline Overview
@@ -49,14 +55,19 @@ Days Since Last Activity	Marketo	Recency
 Segmentation Methods
 RFM Analysis
 Classic Recency-Frequency-Monetary scoring adapted for B2B: Recency = days since last Marketo activity, Frequency = total engagements, Monetary = total pipeline value. Accounts scored 1–5 on each dimension and mapped to segments (Champions, Loyal, At Risk, etc.).
+
 K-Means Clustering
 Optimal K selected via Elbow method (KneeLocator) and Silhouette analysis. Features standardized with StandardScaler. Clusters visualized using PCA projection.
+
 Hierarchical Clustering (Agglomerative)
 Ward linkage with dendrogram analysis for visual cluster count validation. Provides an alternative grouping to cross-validate K-Means results.
+
 DBSCAN
 Density-based method used primarily for anomaly/outlier detection — identifies accounts that don't fit any natural cluster (potential data quality issues or unique high-value accounts).
+
 Gaussian Mixture Model (GMM)
 Soft clustering that assigns probability of membership to each cluster rather than hard assignments. Model selection via BIC/AIC minimization.
+
 Consensus Segmentation
 Cross-method comparison using Adjusted Rand Index (ARI) and Normalized Mutual Information (NMI) to validate that segments are robust across methods, not artifacts of a single algorithm.
 ---
