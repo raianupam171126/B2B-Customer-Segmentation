@@ -1,0 +1,145 @@
+"""
+Data Generator Module
+=====================
+Generates synthetic B2B data mimicking real Marketo + Salesforce exports.
+
+Three datasets are produced:
+1. Salesforce Accounts — firmographic data (industry, revenue, employees, tier)
+2. Salesforce Opportunities — pipeline data (stages, deal values, win/loss)
+3. Marketo Activities — engagement data (emails, webinars, content, forms)
+
+All datasets share `sf_account_id` as the join key, mirroring the
+Marketo-Salesforce native sync.
+"""
+
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+
+
+def generate_sf_accounts(n_accounts: int = 2500, seed: int = 42) -> pd.DataFrame:
+    """
+    Generate synthetic Salesforce Account data.
+
+    Parameters
+    ----------
+    n_accounts : int
+        Number of accounts to generate.
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    pd.DataFrame
+        Salesforce Account table with firmographic fields.
+    """
+    np.random.seed(seed)
+
+    industries = [
+        "Technology", "Financial Services", "Healthcare", "Manufacturing",
+        "Retail", "Education", "Media", "Professional Services",
+    ]
+    company_sizes = ["SMB", "Mid-Market", "Enterprise"]
+    regions = ["North America", "EMEA", "APAC", "LATAM"]
+    tiers = ["Tier 1", "Tier 2", "Tier 3"]
+
+    accounts = pd.DataFrame({
+        "sf_account_id": [f"ACC-{i:05d}" for i in range(n_accounts)],
+        "account_name": [f"Company_{i}" for i in range(n_accounts)],
+        "industry": np.random.choice(industries, n_accounts),
+        "company_size": np.random.choice(company_sizes, n_accounts, p=[0.4, 0.35, 0.25]),
+        "region": np.random.choice(regions, n_accounts, p=[0.40, 0.30, 0.20, 0.10]),
+        "account_tier": np.random.choice(tiers, n_accounts, p=[0.2, 0.35, 0.45]),
+        "annual_revenue_usd": np.random.lognormal(mean=14, sigma=1.5, size=n_accounts).astype(int),
+        "employee_count": np.random.lognormal(mean=5.5, sigma=1.2, size=n_accounts).astype(int),
+        "account_tenure_months": np.random.randint(1, 84, n_accounts),
+    })
+
+    return accounts
+
+
+def generate_sf_opportunities(
+    accounts: pd.DataFrame, seed: int = 42
+) -> pd.DataFrame:
+    """
+    Generate synthetic Salesforce Opportunity data linked to accounts.
+
+    Parameters
+    ----------
+    accounts : pd.DataFrame
+        Account table (needs sf_account_id column).
+    seed : int
+        Random seed.
+
+    Returns
+    -------
+    pd.DataFrame
+        Opportunity table with stage, value, and outcome fields.
+    """
+    np.random.seed(seed)
+
+    stages = [
+        "Prospecting", "Qualification", "Proposal",
+        "Negotiation", "Closed Won", "Closed Lost",
+    ]
+
+    records = []
+    for _, acct in accounts.iterrows():
+        n_opps = np.random.poisson(lam=3)
+        for j in range(max(1, n_opps)):
+            stage = np.random.choice(stages, p=[0.20, 0.20, 0.20, 0.15, 0.15, 0.10])
+            value = np.random.lognormal(mean=10, sigma=1.5)
+            records.append({
+                "opportunity_id": f"OPP-{len(records):06d}",
+                "sf_account_id": acct["sf_account_id"],
+                "stage": stage,
+                "opportunity_value": round(value, 2),
+                "is_won": 1 if stage == "Closed Won" else 0,
+                "is_closed": 1 if stage in ["Closed Won", "Closed Lost"] else 0,
+            })
+
+    return pd.DataFrame(records)
+
+
+def generate_mkto_activities(
+    accounts: pd.DataFrame, seed: int = 42
+) -> pd.DataFrame:
+    """
+    Generate synthetic Marketo engagement activity data.
+
+    Parameters
+    ----------
+    accounts : pd.DataFrame
+        Account table (needs sf_account_id column).
+    seed : int
+        Random seed.
+
+    Returns
+    -------
+    pd.DataFrame
+        Marketo activity log with type, timestamp, and lead score.
+    """
+    np.random.seed(seed)
+
+    activity_types = [
+        "Email Open", "Email Click", "Webinar Attended",
+        "Content Download", "Form Fill",
+    ]
+
+    records = []
+    ref_date = datetime(2024, 12, 31)
+
+    for _, acct in accounts.iterrows():
+        n_activities = np.random.poisson(lam=8)
+        for _ in range(max(1, n_activities)):
+            days_ago = np.random.randint(1, 365)
+            records.append({
+                "sf_account_id": acct["sf_account_id"],
+                "activity_type": np.random.choice(
+                    activity_types, p=[0.30, 0.25, 0.15, 0.20, 0.10]
+                ),
+                "activity_date": ref_date - timedelta(days=int(days_ago)),
+                "lead_score": np.random.randint(10, 100),
+            })
+
+    return pd.DataFrame(records)
