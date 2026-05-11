@@ -36,21 +36,37 @@ Step 9:  Actionable Recommendations & Export (strategy per segment, executive da
 ---
 Data
 Detail	Value
+
 Accounts	2,500 B2B accounts (synthetic, modelled after real Marketo + SFDC patterns)
+
 Opportunities	Multi-stage pipeline data (Prospecting → Closed Won/Lost)
+
 Marketo Activities	Email opens, clicks, webinar attendance, content downloads, form fills
+
 Features Used	9 clustering features spanning firmographic, pipeline, and engagement dimensions
+
 Feature Matrix
+
 Feature	Source	Category
+
 Annual Revenue	Salesforce	Firmographic
+
 Employee Count	Salesforce	Firmographic
+
 Account Tenure	Salesforce	Firmographic
+
 Total Opportunities	Salesforce	Pipeline
+
 Total Pipeline Value	Salesforce	Pipeline
+
 Win Rate	Salesforce	Pipeline
+
 Engagement Score	Marketo	Engagement
+
 Avg Lead Score	Marketo	Engagement
+
 Days Since Last Activity	Marketo	Recency
+
 ---
 Segmentation Methods
 RFM Analysis
