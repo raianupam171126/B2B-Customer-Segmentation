@@ -90,20 +90,34 @@ Cross-method comparison using Adjusted Rand Index (ARI) and Normalized Mutual In
 Key Results
 Segments Identified
 Segment	Profile	Strategy
-🏆 Tier 1 — Strategic Champions	High revenue, high engagement, strong pipeline	ABM campaigns, executive events, custom content
-🌟 Tier 2 — Growth Accounts	Mid-market, rising engagement, expanding pipeline	Nurture sequences, case studies, upsell plays
-🔄 Tier 3 — Nurture Pipeline	Active engagement but low conversion	Sales enablement, demo offers, ROI calculators
-⚠️ Tier 4 — At-Risk / Dormant	Previously active, declining engagement	Re-engagement campaigns, win-back offers
-🌱 Tier 5 — New / Emerging	Early-stage, limited data	Onboarding sequences, educational content
+Tier 1 — Strategic Champions	High revenue, high engagement, strong pipeline	ABM campaigns, executive events, custom content
+
+Tier 2 — Growth Accounts	Mid-market, rising engagement, expanding pipeline	Nurture sequences, case studies, upsell plays
+
+Tier 3 — Nurture Pipeline	Active engagement but low conversion	Sales enablement, demo offers, ROI calculators
+
+Tier 4 — At-Risk / Dormant	Previously active, declining engagement	Re-engagement campaigns, win-back offers
+
+Tier 5 — New / Emerging	Early-stage, limited data	Onboarding sequences, educational content
+
 Visualizations
+
 The notebook includes 20+ publication-quality charts:
+
 Feature distributions and correlation heatmaps
+
 RFM segment treemap and scatter plots
+
 Elbow curve, Silhouette scores, and Calinski-Harabasz index
+
 PCA cluster projections (K-Means, Hierarchical, GMM)
+
 DBSCAN anomaly detection plot
+
 Dendrogram for hierarchical clustering
+
 Radar charts for segment comparison
+
 Segment × Industry heatmap
 Executive dashboard (pipeline, engagement, revenue by segment)
 
