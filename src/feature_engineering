@@ -1,0 +1,143 @@
+"""
+Feature Engineering Module
+==========================
+Rolls up opportunity and Marketo activity data to the account level
+and constructs the unified feature matrix for clustering.
+
+Pipeline:
+    Raw Opportunities  → Account-level aggregates (total opps, pipeline, win rate)
+    Raw Marketo Logs   → Account-level aggregates (engagement score, recency, lead score)
+    Salesforce Accounts + Rollups → Unified Feature Matrix
+"""
+
+import numpy as np
+import pandas as pd
+from datetime import datetime
+
+
+def rollup_opportunities(opportunities: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate opportunity data to account level.
+
+    Returns one row per account with: total_opportunities, total_pipeline_value,
+    win_rate, and avg_deal_size.
+    """
+    rollup = opportunities.groupby("sf_account_id").agg(
+        total_opportunities=("opportunity_id", "count"),
+        total_pipeline_value=("opportunity_value", "sum"),
+        won_deals=("is_won", "sum"),
+        closed_deals=("is_closed", "sum"),
+        avg_deal_size=("opportunity_value", "mean"),
+    ).reset_index()
+
+    rollup["win_rate"] = np.where(
+        rollup["closed_deals"] > 0,
+        rollup["won_deals"] / rollup["closed_deals"],
+        0,
+    )
+    return rollup
+
+
+def rollup_marketo_activities(
+    activities: pd.DataFrame,
+    reference_date: datetime = datetime(2024, 12, 31),
+) -> pd.DataFrame:
+    """
+    Aggregate Marketo activity data to account level.
+
+    Returns one row per account with: total_activities, engagement_score,
+    days_since_last_activity, and avg_lead_score.
+    """
+    activity_counts = (
+        activities.groupby(["sf_account_id", "activity_type"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    account_agg = activities.groupby("sf_account_id").agg(
+        total_activities=("activity_type", "count"),
+        last_activity_date=("activity_date", "max"),
+        avg_lead_score=("lead_score", "mean"),
+    ).reset_index()
+
+    account_agg["days_since_last_activity"] = (
+        reference_date - account_agg["last_activity_date"]
+    ).dt.days
+
+    # Engagement score: weighted sum of activity types
+    weights = {
+        "Email Open": 1,
+        "Email Click": 3,
+        "Form Fill": 5,
+        "Content Download": 4,
+        "Webinar Attended": 5,
+    }
+
+    engagement = activities.copy()
+    engagement["weight"] = engagement["activity_type"].map(weights).fillna(1)
+    engagement_scores = (
+        engagement.groupby("sf_account_id")["weight"]
+        .sum()
+        .reset_index()
+        .rename(columns={"weight": "engagement_score"})
+    )
+
+    mkto_rollup = account_agg.merge(engagement_scores, on="sf_account_id", how="left")
+    return mkto_rollup
+
+
+def build_unified_feature_matrix(
+    accounts: pd.DataFrame,
+    opp_rollup: pd.DataFrame,
+    mkto_rollup: pd.DataFrame,
+    clustering_features: list = None,
+) -> pd.DataFrame:
+    """
+    Merge all sources into a unified account-level feature matrix.
+
+    Parameters
+    ----------
+    accounts : pd.DataFrame
+        Salesforce Account data.
+    opp_rollup : pd.DataFrame
+        Account-level opportunity aggregates.
+    mkto_rollup : pd.DataFrame
+        Account-level Marketo engagement aggregates.
+    clustering_features : list, optional
+        Columns to use for clustering. If None, uses default set.
+
+    Returns
+    -------
+    pd.DataFrame
+        Unified feature matrix ready for segmentation.
+    """
+    unified = (
+        accounts
+        .merge(opp_rollup, on="sf_account_id", how="left")
+        .merge(mkto_rollup, on="sf_account_id", how="left")
+    )
+
+    # Fill missing values for accounts with no opps or marketo data
+    fill_cols = [
+        "total_opportunities", "total_pipeline_value", "win_rate",
+        "avg_deal_size", "total_activities", "engagement_score",
+        "avg_lead_score",
+    ]
+    for col in fill_cols:
+        if col in unified.columns:
+            unified[col] = unified[col].fillna(0)
+
+    if "days_since_last_activity" in unified.columns:
+        unified["days_since_last_activity"] = unified[
+            "days_since_last_activity"
+        ].fillna(365)
+
+    if clustering_features is None:
+        clustering_features = [
+            "annual_revenue_usd", "employee_count", "account_tenure_months",
+            "total_opportunities", "total_pipeline_value", "win_rate",
+            "engagement_score", "avg_lead_score", "days_since_last_activity",
+        ]
+
+    return unified, clustering_features
