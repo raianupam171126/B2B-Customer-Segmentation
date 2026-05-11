@@ -1,0 +1,188 @@
+"""
+Segment Profiling Module
+========================
+Assigns business-meaningful names to clusters, generates segment profiles,
+and produces actionable recommendations per segment.
+"""
+
+import numpy as np
+import pandas as pd
+
+
+# ──────────────────────────────────────────────
+# Segment Naming
+# ──────────────────────────────────────────────
+
+DEFAULT_SEGMENT_NAMES = {
+    0: "🏆 Tier 1 — Strategic Champions",
+    1: "🌟 Tier 2 — Growth Accounts",
+    2: "🔄 Tier 3 — Nurture Pipeline",
+    3: "⚠️ Tier 4 — At-Risk / Dormant",
+    4: "🌱 Tier 5 — New / Emerging",
+}
+
+
+def assign_segment_names(
+    df: pd.DataFrame,
+    cluster_col: str = "kmeans_cluster",
+    score_col: str = "health_score",
+    names: dict = None,
+) -> pd.DataFrame:
+    """
+    Assign business-meaningful names to clusters, ranked by a score.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with cluster labels.
+    cluster_col : str
+        Column containing cluster IDs.
+    score_col : str
+        Column to rank clusters by (highest = best tier).
+    names : dict, optional
+        Mapping of rank → name. Uses defaults if None.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with 'segment_name' column added.
+    """
+    if names is None:
+        names = DEFAULT_SEGMENT_NAMES
+
+    # Rank clusters by mean score
+    cluster_ranks = (
+        df.groupby(cluster_col)[score_col]
+        .mean()
+        .sort_values(ascending=False)
+        .index.tolist()
+    )
+
+    rank_map = {}
+    for rank, cluster_id in enumerate(cluster_ranks):
+        rank_map[cluster_id] = names.get(rank, f"Segment {rank + 1}")
+
+    df = df.copy()
+    df["segment_name"] = df[cluster_col].map(rank_map)
+    return df
+
+
+# ──────────────────────────────────────────────
+# Segment Profiling
+# ──────────────────────────────────────────────
+
+def profile_segments(
+    df: pd.DataFrame,
+    segment_col: str = "segment_name",
+    profile_cols: list = None,
+) -> pd.DataFrame:
+    """
+    Generate descriptive statistics per segment.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Segmented DataFrame.
+    segment_col : str
+        Column with segment names.
+    profile_cols : list
+        Features to profile. Uses defaults if None.
+
+    Returns
+    -------
+    pd.DataFrame
+        Segment-level summary statistics.
+    """
+    if profile_cols is None:
+        profile_cols = [
+            "annual_revenue_usd", "employee_count",
+            "total_opportunities", "total_pipeline_value",
+            "win_rate", "engagement_score", "avg_lead_score",
+            "days_since_last_activity",
+        ]
+
+    available = [c for c in profile_cols if c in df.columns]
+
+    profile = df.groupby(segment_col)[available].agg(["mean", "median", "count"])
+    return profile
+
+
+# ──────────────────────────────────────────────
+# Recommendations Engine
+# ──────────────────────────────────────────────
+
+DEFAULT_RECOMMENDATIONS = {
+    "🏆 Tier 1 — Strategic Champions": {
+        "Marketing": "ABM campaigns, executive events, custom content, co-marketing",
+        "Sales": "Quarterly business reviews, dedicated CSM, expansion playbooks",
+        "Priority": "Retain and expand — highest LTV accounts",
+    },
+    "🌟 Tier 2 — Growth Accounts": {
+        "Marketing": "Nurture sequences, case studies, industry-specific webinars",
+        "Sales": "Upsell/cross-sell motions, multi-threaded relationships",
+        "Priority": "Accelerate pipeline — highest growth potential",
+    },
+    "🔄 Tier 3 — Nurture Pipeline": {
+        "Marketing": "Educational drip campaigns, ROI calculators, demo offers",
+        "Sales": "Sales enablement support, proof-of-concept offers",
+        "Priority": "Convert engagement into pipeline — bridge the gap",
+    },
+    "⚠️ Tier 4 — At-Risk / Dormant": {
+        "Marketing": "Re-engagement campaigns, win-back offers, new product alerts",
+        "Sales": "Executive outreach, competitive displacement plays",
+        "Priority": "Re-activate before churn — time-sensitive",
+    },
+    "🌱 Tier 5 — New / Emerging": {
+        "Marketing": "Onboarding sequences, educational content, product tutorials",
+        "Sales": "Discovery calls, needs assessment, land-and-expand",
+        "Priority": "Build foundation — establish value early",
+    },
+}
+
+
+def get_recommendations(segment_name: str, custom: dict = None) -> dict:
+    """Return strategic recommendations for a given segment."""
+    source = custom if custom else DEFAULT_RECOMMENDATIONS
+    return source.get(segment_name, {"Note": "No recommendations configured."})
+
+
+def compute_health_score(
+    df: pd.DataFrame,
+    engagement_col: str = "engagement_score",
+    pipeline_col: str = "total_pipeline_value",
+    winrate_col: str = "win_rate",
+    recency_col: str = "days_since_last_activity",
+) -> pd.Series:
+    """
+    Compute a composite health score (0–100) for each account.
+
+    Weighted combination:
+        40% engagement + 30% pipeline + 20% win rate + 10% recency
+    """
+    from sklearn.preprocessing import MinMaxScaler
+
+    scaler = MinMaxScaler()
+    cols = [engagement_col, pipeline_col, winrate_col, recency_col]
+    available = [c for c in cols if c in df.columns]
+    scaled = pd.DataFrame(
+        scaler.fit_transform(df[available]),
+        columns=available,
+        index=df.index,
+    )
+
+    # Invert recency (lower days = better)
+    if recency_col in scaled.columns:
+        scaled[recency_col] = 1 - scaled[recency_col]
+
+    weights = {
+        engagement_col: 0.40,
+        pipeline_col: 0.30,
+        winrate_col: 0.20,
+        recency_col: 0.10,
+    }
+
+    score = sum(
+        scaled[col] * weights.get(col, 0.25)
+        for col in available
+    )
+    return (score * 100).round(1)
